@@ -1,0 +1,319 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+-- 🔒 USERID WHITELIST SYSTEM
+local whitelistedUsers = {
+    [12345678] = true, -- Replace with your UserIds
+    [87654321] = true,
+}
+
+if not whitelistedUsers[player.UserId] then
+    player:Kick("You're not whitelisted to use this script.")
+    return
+end
+
+-- Flags
+local holdingZ = false
+local guiEnabled = true
+local espEnabled = true
+local aimbotEnabled = true
+local teamCheckEnabled = true
+local infiniteJumpEnabled = false
+local espObjects = {}
+
+-- GUI SETUP
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "AimbotGUI"
+screenGui.ResetOnSpawn = false
+
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0, 320, 0, 420)
+frame.Position = UDim2.new(0.01, 0, 0.2, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Visible = true
+
+local closeButton = Instance.new("TextButton", frame)
+closeButton.Size = UDim2.new(0, 30, 0, 30)
+closeButton.Position = UDim2.new(1, -35, 0, 5)
+closeButton.Text = "X"
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.TextColor3 = Color3.new(1,1,1)
+closeButton.Font = Enum.Font.SourceSansBold
+closeButton.TextScaled = true
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, -40, 0, 30)
+title.Position = UDim2.new(0, 5, 0, 5)
+title.Text = "Aimbot + ESP + Infinite Jump"
+title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Font = Enum.Font.SourceSansBold
+title.TextScaled = true
+
+local walkLabel = Instance.new("TextLabel", frame)
+walkLabel.Size = UDim2.new(1, -10, 0, 30)
+walkLabel.Position = UDim2.new(0, 5, 0, 45)
+walkLabel.Text = "WalkSpeed"
+walkLabel.TextColor3 = Color3.new(1,1,1)
+walkLabel.BackgroundTransparency = 1
+walkLabel.TextXAlignment = Enum.TextXAlignment.Left
+walkLabel.Font = Enum.Font.SourceSans
+walkLabel.TextScaled = true
+
+local walkSlider = Instance.new("TextBox", frame)
+walkSlider.Size = UDim2.new(1, -10, 0, 35)
+walkSlider.Position = UDim2.new(0, 5, 0, 80)
+walkSlider.Text = "16"
+walkSlider.ClearTextOnFocus = false
+walkSlider.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+walkSlider.TextColor3 = Color3.new(1, 1, 1)
+walkSlider.Font = Enum.Font.SourceSans
+walkSlider.TextScaled = true
+
+local espToggle = Instance.new("TextButton", frame)
+espToggle.Size = UDim2.new(1, -10, 0, 40)
+espToggle.Position = UDim2.new(0, 5, 0, 125)
+espToggle.Text = "Toggle ESP: ON"
+espToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+espToggle.TextColor3 = Color3.new(1, 1, 1)
+espToggle.Font = Enum.Font.SourceSans
+espToggle.TextScaled = true
+
+local aimbotToggle = Instance.new("TextButton", frame)
+aimbotToggle.Size = UDim2.new(1, -10, 0, 40)
+aimbotToggle.Position = UDim2.new(0, 5, 0, 175)
+aimbotToggle.Text = "Toggle Aimbot: ON"
+aimbotToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+aimbotToggle.TextColor3 = Color3.new(1, 1, 1)
+aimbotToggle.Font = Enum.Font.SourceSans
+aimbotToggle.TextScaled = true
+
+local infiniteJumpToggle = Instance.new("TextButton", frame)
+infiniteJumpToggle.Size = UDim2.new(1, -10, 0, 40)
+infiniteJumpToggle.Position = UDim2.new(0, 5, 0, 225)
+infiniteJumpToggle.Text = "Toggle Infinite Jump: OFF"
+infiniteJumpToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+infiniteJumpToggle.TextColor3 = Color3.new(1, 1, 1)
+infiniteJumpToggle.Font = Enum.Font.SourceSans
+infiniteJumpToggle.TextScaled = true
+
+local teamCheckToggle = Instance.new("TextButton", frame)
+teamCheckToggle.Size = UDim2.new(1, -10, 0, 40)
+teamCheckToggle.Position = UDim2.new(0, 5, 0, 275)
+teamCheckToggle.Text = "Toggle Team Check: ON"
+teamCheckToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+teamCheckToggle.TextColor3 = Color3.new(1, 1, 1)
+teamCheckToggle.Font = Enum.Font.SourceSans
+teamCheckToggle.TextScaled = true
+
+-- HELPER FUNCTIONS
+
+local function getClosestEnemyToCursor()
+	local closest = nil
+	local shortest = math.huge
+	local mousePos = UserInputService:GetMouseLocation()
+	for _, target in pairs(Players:GetPlayers()) do
+		if target ~= player and target.Character and target.Character:FindFirstChild("Head") then
+			if not teamCheckEnabled or target.Team ~= player.Team then
+				local head = target.Character.Head
+				local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+				if onScreen then
+					local dist = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+					if dist < shortest then
+						shortest = dist
+						closest = head
+					end
+				end
+			end
+		end
+	end
+	return closest
+end
+
+local function updateWalkSpeed()
+	local ws = tonumber(walkSlider.Text)
+	if ws then
+		if ws < 8 then ws = 8 end
+		if ws > 100 then ws = 100 end
+		local char = player.Character
+		if char then
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = ws
+			end
+		end
+	end
+end
+
+-- ESP
+local function createESP(target)
+	if espObjects[target] then return end
+	local box = Drawing.new("Square")
+	box.Thickness = 1
+	box.Transparency = 1
+	box.Filled = false
+	box.ZIndex = 2
+
+	local nameText = Drawing.new("Text")
+	nameText.Size = 18
+	nameText.Center = true
+	nameText.Outline = true
+	nameText.Transparency = 1
+
+	local healthBar = Drawing.new("Line")
+	healthBar.Thickness = 4
+	healthBar.Transparency = 1
+	healthBar.Color = Color3.new(0,1,0)
+
+	espObjects[target] = {box = box, name = nameText, health = healthBar}
+end
+
+local function removeESP(target)
+	if espObjects[target] then
+		for _, draw in pairs(espObjects[target]) do
+			draw:Remove()
+		end
+		espObjects[target] = nil
+	end
+end
+
+-- Infinite Jump
+UserInputService.JumpRequest:Connect(function()
+	if infiniteJumpEnabled then
+		local char = player.Character
+		if char then
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			end
+		end
+	end
+end)
+
+-- MAIN LOOP
+RunService.RenderStepped:Connect(function()
+	updateWalkSpeed()
+
+	for _, target in pairs(Players:GetPlayers()) do
+		if target ~= player and target.Character and target.Character:FindFirstChild("Head") and target.Character:FindFirstChild("HumanoidRootPart") then
+			if espEnabled then
+				createESP(target)
+			else
+				removeESP(target)
+			end
+
+			local char = target.Character
+			local hrp = char.HumanoidRootPart
+			local head = char.Head
+			local humanoid = char:FindFirstChild("Humanoid")
+
+			if espEnabled and espObjects[target] and humanoid then
+				local box = espObjects[target].box
+				local name = espObjects[target].name
+				local health = espObjects[target].health
+
+				local pos, visible = camera:WorldToViewportPoint(hrp.Position)
+				if visible then
+					local topLeft = camera:WorldToViewportPoint(hrp.Position + Vector3.new(-2, 3, 0))
+					local bottomRight = camera:WorldToViewportPoint(hrp.Position + Vector3.new(2, -3, 0))
+					local color = not teamCheckEnabled and Color3.new(1,0,0) or (target.Team == player.Team and Color3.new(0,0,1) or Color3.new(1,0,0))
+
+					box.Visible = true
+					box.Position = Vector2.new(topLeft.X, topLeft.Y)
+					box.Size = Vector2.new(bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y)
+					box.Color = color
+
+					name.Visible = true
+					name.Text = target.Name
+					name.Position = Vector2.new(pos.X, topLeft.Y - 18)
+					name.Color = color
+
+					local healthPct = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+					health.Visible = true
+					health.From = Vector2.new(topLeft.X, bottomRight.Y + 6)
+					health.To = Vector2.new(topLeft.X + (box.Size.X * healthPct), bottomRight.Y + 6)
+					health.Color = Color3.new(0,1,0)
+				else
+					box.Visible = false
+					name.Visible = false
+					health.Visible = false
+				end
+			else
+				removeESP(target)
+			end
+		else
+			removeESP(target)
+		end
+	end
+
+	if holdingZ and aimbotEnabled then
+		local targetHead = getClosestEnemyToCursor()
+		if targetHead then
+			local char = player.Character
+			if char then
+				local humanoidRootPart = char:FindFirstChild("HumanoidRootPart")
+				if humanoidRootPart then
+					camera.CFrame = CFrame.new(camera.CFrame.Position, targetHead.Position)
+				end
+			end
+		end
+	end
+end)
+
+-- INPUTS
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.Z then
+		holdingZ = true
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.Z then
+		holdingZ = false
+	end
+end)
+
+-- BUTTONS
+closeButton.MouseButton1Click:Connect(function()
+	frame.Visible = false
+	guiEnabled = false
+end)
+
+espToggle.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	espToggle.Text = "Toggle ESP: " .. (espEnabled and "ON" or "OFF")
+	if not espEnabled then
+		for target,_ in pairs(espObjects) do
+			removeESP(target)
+		end
+	end
+end)
+
+aimbotToggle.MouseButton1Click:Connect(function()
+	aimbotEnabled = not aimbotEnabled
+	aimbotToggle.Text = "Toggle Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
+end)
+
+infiniteJumpToggle.MouseButton1Click:Connect(function()
+	infiniteJumpEnabled = not infiniteJumpEnabled
+	infiniteJumpToggle.Text = "Toggle Infinite Jump: " .. (infiniteJumpEnabled and "ON" or "OFF")
+end)
+
+teamCheckToggle.MouseButton1Click:Connect(function()
+	teamCheckEnabled = not teamCheckEnabled
+	teamCheckToggle.Text = "Toggle Team Check: " .. (teamCheckEnabled and "ON" or "OFF")
+end)
+
+walkSlider.FocusLost:Connect(function()
+	updateWalkSpeed()
+end)
