@@ -7,7 +7,7 @@ local camera = workspace.CurrentCamera
 
 -- 🔒 USERID WHITELIST SYSTEM
 local whitelistedUsers = {
-    [12345678] = true, -- Replace with your UserIds
+    [8990340063] = true, -- Replace with your UserIds
     [87654321] = true,
 }
 
